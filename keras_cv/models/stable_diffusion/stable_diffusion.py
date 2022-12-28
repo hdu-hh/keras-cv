@@ -105,12 +105,14 @@ class StableDiffusionBase:
         img = model.generate_image(encoded_text)
         ```
         """
-        # Tokenize prompt (i.e. starting context)
-        inputs = self.tokenizer.encode(prompt)
-        if len(inputs) > MAX_PROMPT_LENGTH:
-            raise ValueError(
-                f"Prompt is too long (should be <= {MAX_PROMPT_LENGTH} tokens)"
-            )
+        if prompt: # Tokenize prompt (i.e. starting context)
+            inputs = self.tokenizer.encode(prompt)
+            if len(inputs) > MAX_PROMPT_LENGTH:
+                raise ValueError(
+                    f"Prompt is too long (should be <= {MAX_PROMPT_LENGTH} tokens)"
+                )
+        else: # an empty context
+            inputs = [49406]
         phrase = inputs + [49407] * (MAX_PROMPT_LENGTH - len(inputs))
         phrase = tf.convert_to_tensor([phrase], dtype=tf.int32)
 
