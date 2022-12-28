@@ -120,10 +120,11 @@ class StableDiffusionBase:
 
     def generate_image(
         self,
-        encoded_text,
+        pos_context,
+        neg_context=None,
         batch_size=1,
         num_steps=50,
-        unconditional_guidance_scale=7.5,
+        neg_guidance_scale=7.5,
         diffusion_noise=None,
         seed=None,
     ):
@@ -173,16 +174,22 @@ class StableDiffusionBase:
                 "noise when it's not already user-specified."
             )
 
-        encoded_text = tf.squeeze(encoded_text)
-        if encoded_text.shape.rank == 2:
-            encoded_text = tf.repeat(
-                tf.expand_dims(encoded_text, axis=0), batch_size, axis=0
+        pos_context = tf.squeeze(pos_context)
+        if pos_context.shape.rank == 2:
+            pos_context = tf.repeat(
+                tf.expand_dims(pos_context, axis=0), batch_size, axis=0
             )
 
-        context = encoded_text
-        unconditional_context = tf.repeat(
-            self._get_unconditional_context(), batch_size, axis=0
-        )
+        if neg_context is None:
+            neg_context = tf.repeat(
+                self._get_unconditional_context(), batch_size, axis=0
+            )
+        else:
+            neg_context = tf.squeeze(pos_context)
+            if neg_context.shape.rank == 2:
+                neg_context = tf.repeat(
+                    tf.expand_dims(neg_context, axis=0), batch_size, axis=0
+                )
 
         if diffusion_noise is not None:
             diffusion_noise = tf.squeeze(diffusion_noise)
@@ -198,22 +205,16 @@ class StableDiffusionBase:
         timesteps = tf.range(1, 1000, 1000 // num_steps)
         alphas, alphas_prev = self._get_initial_alphas(timesteps)
         progbar = keras.utils.Progbar(len(timesteps))
-        iteration = 0
         for index, timestep in list(enumerate(timesteps))[::-1]:
-            latent_prev = latent  # Set aside the previous latent vector
             t_emb = self._get_timestep_embedding(timestep, batch_size)
-            unconditional_latent = self.diffusion_model.predict_on_batch(
-                [latent, t_emb, unconditional_context]
-            )
-            latent = self.diffusion_model.predict_on_batch([latent, t_emb, context])
-            latent = unconditional_latent + unconditional_guidance_scale * (
-                latent - unconditional_latent
-            )
+            neg_lat = self.diffusion_model.predict_on_batch([latent, t_emb, neg_context])
+            pos_lat = self.diffusion_model.predict_on_batch([latent, t_emb, pos_context])
+            mid_lat = neg_lat + (pos_lat - neg_lat) * neg_guidance_scale
             a_t, a_prev = alphas[index], alphas_prev[index]
-            pred_x0 = (latent_prev - math.sqrt(1 - a_t) * latent) / math.sqrt(a_t)
-            latent = latent * math.sqrt(1.0 - a_prev) + math.sqrt(a_prev) * pred_x0
-            iteration += 1
-            progbar.update(iteration)
+            dif_lat = latent - mid_lat*math.sqrt(1.0 - a_t)
+            mid_lat *= math.sqrt(1.0 - a_prev)
+            latent = mid_lat + dif_lat*math.sqrt(a_prev/a_t)
+            progbar.update(len(timesteps) - index)
 
         # Decoding stage
         decoded = self.decoder.predict_on_batch(latent)
