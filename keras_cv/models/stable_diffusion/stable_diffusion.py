@@ -432,19 +432,13 @@ class StableDiffusionBase:
     def _get_initial_alphas(self, timesteps):
         alphas = [_ALPHAS_CUMPROD[t] for t in timesteps]
         alphas_prev = [1.0] + alphas[:-1]
-
         return alphas, alphas_prev
 
     def _get_initial_diffusion_noise(self, batch_size, seed):
-        if seed is not None:
-            return tf.random.stateless_normal(
-                (batch_size, self.img_height // 8, self.img_width // 8, 4),
-                seed=[seed, seed],
-            )
-        else:
-            return tf.random.normal(
-                (batch_size, self.img_height // 8, self.img_width // 8, 4)
-            )
+        shape = (batch_size, self.img_height // 8, self.img_width // 8, 4)
+        if seed is None:
+            return tf.random.normal(shape)
+        return tf.random.stateless_normal(shape, seed=[seed, seed])
 
     @staticmethod
     def _get_pos_ids():
