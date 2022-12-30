@@ -129,6 +129,8 @@ class StableDiffusionBase:
         neg_guidance_scale=7.5,
         diffusion_noise=None,
         seed=None,
+        inpImage=None,
+        inpStrength=0.5,
     ):
         """Generates an image based on encoded text.
 
@@ -154,6 +156,10 @@ class StableDiffusionBase:
             seed: integer which is used to seed the random generation of
                 diffusion noise, only to be specified if `diffusion_noise` is
                 None.
+            inpImage: input image to base the generated image from
+            inpStrength: a float between 0 and 1 to determine the importance
+                of the input image. The closer the value is to one the closer
+                the output image is to the input image. Default: 0.5
 
         Example:
 
@@ -203,9 +209,24 @@ class StableDiffusionBase:
         else:
             latent = self._get_initial_diffusion_noise(batch_size, seed)
 
-        # Iterative reverse diffusion stage
+        # prepare timesteps
         timesteps = tf.range(1, 1000, 1000 // num_steps)
         alphas, alphas_prev = self._get_initial_alphas(timesteps)
+
+        # use eventual input image
+        if inpImage != None:
+            if (inpImage.width, inpImage.height) != (self.img_width, self.img_height):
+                raise "bad image size, want"+(inpImage.width, inpImage.height)+"got"+(self.img_width, self.img_height)
+            inpArray = np.array(inpImage, dtype=np.float32)[None,...,:3]
+            inpTensor = tf.cast(inpArray, dtype=tf.float32) / 255.0 * 2 - 1.0
+            inpLatent = self.image_encoder(inpTensor)
+            tsLimit = round(len(timesteps)*(1-inpStrength))
+            a_t = _ALPHAS_CUMPROD[timesteps[tsLimit]]
+            timesteps = timesteps[:tsLimit]
+            inpNoise = latent
+            latent = inpLatent*math.sqrt(a_t) + inpNoise*math.sqrt(1.0-a_t)
+
+        # Iterative reverse diffusion stage
         progbar = keras.utils.Progbar(len(timesteps))
         for index, timestep in list(enumerate(timesteps))[::-1]:
             t_emb = self._get_timestep_embedding(timestep, batch_size)
