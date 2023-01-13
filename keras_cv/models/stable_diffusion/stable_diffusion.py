@@ -72,6 +72,8 @@ class StableDiffusionBase:
         num_steps=25,
         unconditional_guidance_scale=7.5,
         seed=None,
+        inpImage=None,
+        inpStrength=0.5,
     ):
         encoded_text = self.encode_text(prompt)
 
@@ -79,8 +81,10 @@ class StableDiffusionBase:
             encoded_text,
             batch_size=batch_size,
             num_steps=num_steps,
-            unconditional_guidance_scale=unconditional_guidance_scale,
+            neg_guidance_scale=unconditional_guidance_scale,
             seed=seed,
+            inpImage=inpImage,
+            inpStrength=inpStrength,
         )
 
     def encode_text(self, prompt):
