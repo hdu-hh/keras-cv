@@ -214,11 +214,13 @@ class StableDiffusionBase:
         alphas, alphas_prev = self._get_initial_alphas(timesteps)
 
         # use eventual input image
-        if inpImage != None:
-            if (inpImage.width, inpImage.height) != (self.img_width, self.img_height):
-                raise "bad image size, want"+(inpImage.width, inpImage.height)+"got"+(self.img_width, self.img_height)
-            inpArray = np.array(inpImage, dtype=np.float32)[None,...,:3]
-            inpTensor = tf.cast(inpArray, dtype=tf.float32) / 255.0 * 2 - 1.0
+        if np.any(inpImage):
+            inpArray = np.array(inpImage, dtype=np.float32)
+            if inpArray.shape[-1] != 3: # assuming RGB-array
+                inpArray = inpArray[...,:3]
+            if len(inpArray.shape) == 3: # extend to BHWC shape if needed
+                inpArray = inpArray[None,...]
+            inpTensor = tf.cast(inpArray, dtype=tf.float32) / 127.5 - 1.0
             inpLatent = self.image_encoder(inpTensor)
             tsLimit = round(len(timesteps)*(1-inpStrength))
             a_t = _ALPHAS_CUMPROD[timesteps[tsLimit]]
