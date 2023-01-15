@@ -73,6 +73,8 @@ class StableDiffusionBase:
         num_steps=50,
         unconditional_guidance_scale=7.5,
         seed=None,
+        from_image=None,
+        from_weight=0.5,
     ):
         encoded_text = self.encode_text(prompt)
 
@@ -83,6 +85,8 @@ class StableDiffusionBase:
             num_steps=num_steps,
             unconditional_guidance_scale=unconditional_guidance_scale,
             seed=seed,
+            from_image=from_image,
+            from_weight=from_weight
         )
 
     def encode_text(self, prompt):
@@ -129,6 +133,8 @@ class StableDiffusionBase:
         unconditional_guidance_scale=7.5,
         diffusion_noise=None,
         seed=None,
+        from_image=None,
+        from_weight=0.5,
     ):
         """Generates an image based on encoded text.
 
@@ -158,6 +164,12 @@ class StableDiffusionBase:
             seed: integer which is used to seed the random generation of
                 diffusion noise, only to be specified if `diffusion_noise` is
                 None.
+            from_image: image to eventually base the generated image on.
+                It may be a PIL image in RGB mode (or any image which exposes
+                its pixel bytes in RGB order via the __array__ method)
+            from_weight: a float between 0 and 1 to set the importance of
+                the from_image. The closer the value is to one the closer
+                the output image is to the from_image. Default: 0.5
 
         Example:
 
@@ -202,8 +214,24 @@ class StableDiffusionBase:
         else:
             latent = self._get_initial_diffusion_noise(batch_size, seed)
 
-        # Iterative reverse diffusion stage
         timesteps = tf.range(1, 1000, 1000 // num_steps)
+
+        # eventually use input images to start from
+        if np.any(from_image):
+            inpArray = np.array(from_image, dtype=np.float32)
+            if inpArray.shape[-1] != 3: # assuming RGB-array
+                inpArray = inpArray[...,:3]
+            if len(inpArray.shape) == 3: # extend to BHWC shape if needed
+                inpArray = inpArray[None,...]
+            inpTensor = tf.cast(inpArray / 255 * 2 - 1.0, dtype=tf.float32)
+            inpLatent = self.image_encoder(inpTensor)
+            tsLimit = round(len(timesteps)*(1 - from_weight))
+            a_t = _ALPHAS_CUMPROD[timesteps[tsLimit]]
+            timesteps = timesteps[:tsLimit]
+            inpNoise = latent
+            latent = inpLatent*tf.sqrt(a_t) + inpNoise*tf.sqrt(1.0-a_t)
+
+        # Iterative reverse diffusion stage
         alphas, alphas_prev = self._get_initial_alphas(timesteps)
         progbar = keras.utils.Progbar(len(timesteps))
         iteration = 0

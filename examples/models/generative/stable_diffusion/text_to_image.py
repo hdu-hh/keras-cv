@@ -14,3 +14,7 @@ model = StableDiffusion(img_height=512, img_width=512, jit_compile=True)
 img = model.text_to_image("Photograph of a beautiful horse running through a field")
 Image.fromarray(img[0]).save("horse.png")
 print("Saved at horse.png")
+
+img = model.text_to_image("a zebra", from_image=img)
+Image.fromarray(img[0]).save("zebra.png")
+print("Saved zebra-morphed horse as zebra.png")
